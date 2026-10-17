@@ -31,8 +31,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _searchResults = [];
   bool _isLoading = false;
   
-  // Switched to a more stable backup server
-  final String apiUrl = 'https://pipedapi.smnz.de';
+  // Using a highly stable backup server
+  final String apiUrl = 'https://pipedapi.drgns.space';
 
   Future<void> _searchMusic(String query) async {
     if (query.isEmpty) return;
@@ -43,8 +43,10 @@ class _SearchScreenState extends State<SearchScreen> {
     });
     
     try {
+      // FIX: URL Encoding prevents crashes when you type spaces or punctuation
+      final encodedQuery = Uri.encodeComponent(query);
       final response = await http.get(
-        Uri.parse('$apiUrl/search?q=$query&filter=music_songs'),
+        Uri.parse('$apiUrl/search?q=$encodedQuery&filter=music_songs'),
       );
 
       if (response.statusCode == 200) {
@@ -56,9 +58,9 @@ class _SearchScreenState extends State<SearchScreen> {
         _showError('Server error: ${response.statusCode}');
       }
     } catch (e) {
-      _showError('Network error. App may be missing internet access.');
+      // FIX: This will now show the EXACT system code if something else breaks
+      _showError('System Error: $e');
     } finally {
-      // This ensures the spinner always stops, even if there is an error
       setState(() => _isLoading = false);
     }
   }
@@ -81,7 +83,7 @@ class _SearchScreenState extends State<SearchScreen> {
         _showError('Failed to load stream.');
       }
     } catch (e) {
-      _showError('Error playing song.');
+      _showError('Error playing: $e');
     }
   }
 
