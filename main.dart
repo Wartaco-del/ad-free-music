@@ -35,28 +35,32 @@ class _SearchScreenState extends State<SearchScreen> {
   final List<String> apiServers = [
     'https://pipedapi.tokhmi.xyz',
     'https://piped-api.garudalinux.org',
-    'https://pipedapi.adminforge.de',
+
     'https://pi.ggtyler.dev/api'
   ];
 
   // The engine that tries each server until one works
-  Future<http.Response> _fetchWithFallback(String path) async {
+ Future<http.Response> _fetchWithFallback(String path) async {
+    String lastError = "Unknown error";
     for (String server in apiServers) {
       try {
+        // Increased timeout to 10 seconds to allow for slower public servers
         final response = await http.get(
           Uri.parse('$server$path')
-        ).timeout(const Duration(seconds: 4)); // If it hangs for 4 seconds, skip to the next
+        ).timeout(const Duration(seconds: 10)); 
         
         if (response.statusCode == 200) {
-          return response; // Success! Return the data.
+          return response; 
+        } else {
+          lastError = 'Server returned status ${response.statusCode}';
         }
       } catch (e) {
-        // Silent failure: move on to the next server in the list
+        lastError = e.toString(); // Save the actual error before moving on
         continue;
       }
     }
-    // If it gets here, all 4 servers are down
-    throw Exception('All backup servers are currently down or blocked.');
+    // If it gets here, reveal the true reason the final server failed
+    throw Exception('Last error: $lastError');
   }
 
   Future<void> _searchMusic(String query) async {
