@@ -30,38 +30,66 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _searchResults = [];
   bool _isLoading = false;
+  
+  // Switched to a more stable backup server
+  final String apiUrl = 'https://pipedapi.smnz.de';
 
-  // 1. Search YouTube via Piped API (Strips out ads)
   Future<void> _searchMusic(String query) async {
-    setState(() => _isLoading = true);
-    final response = await http.get(
-      Uri.parse('https://pipedapi.kavin.rocks/search?q=$query&filter=music_songs'),
-    );
+    if (query.isEmpty) return;
+    
+    setState(() {
+      _isLoading = true;
+      _searchResults = [];
+    });
+    
+    try {
+      final response = await http.get(
+        Uri.parse('$apiUrl/search?q=$query&filter=music_songs'),
+      );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() {
-        _searchResults = data['items'];
-        _isLoading = false;
-      });
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _searchResults = data['items'];
+        });
+      } else {
+        _showError('Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      _showError('Network error. App may be missing internet access.');
+    } finally {
+      // This ensures the spinner always stops, even if there is an error
+      setState(() => _isLoading = false);
     }
   }
 
-  // 2. Fetch the raw audio stream URL and play
   Future<void> _playSong(String videoId) async {
-    final response = await http.get(
-      Uri.parse('https://pipedapi.kavin.rocks/streams/$videoId'),
-    );
+    try {
+      final response = await http.get(Uri.parse('$apiUrl/streams/$videoId'));
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      // Find the best audio-only stream (usually webm or m4a)
-      final audioStreams = data['audioStreams'] as List;
-      if (audioStreams.isNotEmpty) {
-        final streamUrl = audioStreams.first['url'];
-        await _player.setUrl(streamUrl);
-        _player.play();
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final audioStreams = data['audioStreams'] as List;
+        if (audioStreams.isNotEmpty) {
+          final streamUrl = audioStreams.first['url'];
+          await _player.setUrl(streamUrl);
+          _player.play();
+        } else {
+           _showError('No audio stream found.');
+        }
+      } else {
+        _showError('Failed to load stream.');
       }
+    } catch (e) {
+      _showError('Error playing song.');
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
   }
 
@@ -84,18 +112,29 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
           ),
-          if (_isLoading) const CircularProgressIndicator(),
+          if (_isLoading) const Padding(
+            padding: EdgeInsets.all(20.0),
+            child: CircularProgressIndicator(),
+          ),
           Expanded(
             child: ListView.builder(
               itemCount: _searchResults.length,
               itemBuilder: (context, index) {
                 final item = _searchResults[index];
                 return ListTile(
-                  leading: Image.network(item['thumbnail']),
-                  title: Text(item['title']),
-                  subtitle: Text(item['uploaderName']),
-                  // Piped URLs contain the video ID, which we extract here
-                  onTap: () => _playSong(item['url'].split('?v=')[1]),
+                  leading: item['thumbnail'] != null 
+                    ? Image.network(item['thumbnail'], width: 50, height: 50, fit: BoxFit.cover) 
+                    : const Icon(Icons.music_note),
+                  title: Text(item['title'] ?? 'Unknown'),
+                  subtitle: Text(item['uploaderName'] ?? ''),
+                  onTap: () {
+                     final url = item['url'] as String?;
+                     if (url != null && url.contains('?v=')) {
+                       _playSong(url.split('?v=')[1]);
+                     } else {
+                       _showError('Invalid song link.');
+                     }
+                  },
                 );
               },
             ),
