@@ -31,8 +31,33 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _searchResults = [];
   bool _isLoading = false;
   
-  // Using a highly stable backup server
-final String apiUrl = 'https://pipedapi.kavin.rocks';
+  // A list of multiple backup servers
+  final List<String> apiServers = [
+    'https://pipedapi.tokhmi.xyz',
+    'https://piped-api.garudalinux.org',
+    'https://pipedapi.adminforge.de',
+    'https://pi.ggtyler.dev/api'
+  ];
+
+  // The engine that tries each server until one works
+  Future<http.Response> _fetchWithFallback(String path) async {
+    for (String server in apiServers) {
+      try {
+        final response = await http.get(
+          Uri.parse('$server$path')
+        ).timeout(const Duration(seconds: 4)); // If it hangs for 4 seconds, skip to the next
+        
+        if (response.statusCode == 200) {
+          return response; // Success! Return the data.
+        }
+      } catch (e) {
+        // Silent failure: move on to the next server in the list
+        continue;
+      }
+    }
+    // If it gets here, all 4 servers are down
+    throw Exception('All backup servers are currently down or blocked.');
+  }
 
   Future<void> _searchMusic(String query) async {
     if (query.isEmpty) return;
@@ -43,22 +68,15 @@ final String apiUrl = 'https://pipedapi.kavin.rocks';
     });
     
     try {
-      // FIX: URL Encoding prevents crashes when you type spaces or punctuation
       final encodedQuery = Uri.encodeComponent(query);
-      final response = await http.get(
-        Uri.parse('$apiUrl/search?q=$encodedQuery&filter=music_songs'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _searchResults = data['items'];
-        });
-      } else {
-        _showError('Server error: ${response.statusCode}');
-      }
+      // Calls our new fallback engine instead of a single hardcoded URL
+      final response = await _fetchWithFallback('/search?q=$encodedQuery&filter=music_songs');
+      
+      final data = json.decode(response.body);
+      setState(() {
+        _searchResults = data['items'];
+      });
     } catch (e) {
-      // FIX: This will now show the EXACT system code if something else breaks
       _showError('System Error: $e');
     } finally {
       setState(() => _isLoading = false);
@@ -67,20 +85,16 @@ final String apiUrl = 'https://pipedapi.kavin.rocks';
 
   Future<void> _playSong(String videoId) async {
     try {
-      final response = await http.get(Uri.parse('$apiUrl/streams/$videoId'));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final audioStreams = data['audioStreams'] as List;
-        if (audioStreams.isNotEmpty) {
-          final streamUrl = audioStreams.first['url'];
-          await _player.setUrl(streamUrl);
-          _player.play();
-        } else {
-           _showError('No audio stream found.');
-        }
+      final response = await _fetchWithFallback('/streams/$videoId');
+      final data = json.decode(response.body);
+      final audioStreams = data['audioStreams'] as List;
+      
+      if (audioStreams.isNotEmpty) {
+        final streamUrl = audioStreams.first['url'];
+        await _player.setUrl(streamUrl);
+        _player.play();
       } else {
-        _showError('Failed to load stream.');
+         _showError('No audio stream found on this server.');
       }
     } catch (e) {
       _showError('Error playing: $e');
