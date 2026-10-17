@@ -32,7 +32,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoading = false;
   
   // Using a highly stable backup server
-  final String apiUrl = 'https://pipedapi.drgns.space';
+final String apiUrl = '[https://pipedapi.in.projectsegfau.lt](https://pipedapi.in.projectsegfau.lt)';
 
   Future<void> _searchMusic(String query) async {
     if (query.isEmpty) return;
